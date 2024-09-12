@@ -1,18 +1,20 @@
 version: '3.8'
 
 services:
-  activemq-master:
+  primary:
     image: apache/activemq-artemis:latest
-    container_name: activemq-master
-    ports:
-      - "61616:61616"
+    container_name: primary
+    # ports:
+    #   - "61616:61616"
+    #   - "8161:8161"
     volumes:
       - ./broker-master.xml:/var/lib/artemis-instance/etc-override/broker.xml
 
-  activemq-slave:
+  backup:
     image: apache/activemq-artemis:latest
-    container_name: activemq-slave
-    ports:
-      - "61617:61616"
+    container_name: backup
+    # ports:
+    #   - "61617:61616"
+    #   - "8162:8161"
     volumes:
       - ./broker-backup.xml:/var/lib/artemis-instance/etc-override/broker.xml

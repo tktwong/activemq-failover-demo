@@ -282,15 +282,15 @@ under the License.
      </ha-policy>
 
     <connectors>
-        <connector name="activemq-slave">tcp://localhost:61617</connector>
-        <connector name="activemq-master">tcp://localhost:61616</connector>
+        <connector name="backup">tcp://backup:61616</connector>
+        <connector name="primary">tcp://primary:61616</connector>
      </connectors>
 
      <cluster-connections>
-        <cluster-connection name="my-cluster">
-           <connector-ref>activemq-master</connector-ref>
-           <static-connectors>
-              <connector-ref>activemq-slave</connector-ref>
+        <cluster-connection name="cluster">
+           <connector-ref>primary</connector-ref>
+           <static-connectors allow-direct-connections-only="true">
+              <connector-ref>backup</connector-ref>
            </static-connectors>
         </cluster-connection>
      </cluster-connections>

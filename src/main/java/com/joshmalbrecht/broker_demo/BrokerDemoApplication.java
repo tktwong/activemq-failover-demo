@@ -1,55 +1,74 @@
 package com.joshmalbrecht.broker_demo;
 
 import org.apache.activemq.artemis.api.core.ActiveMQException;
+import org.apache.activemq.artemis.api.core.TransportConfiguration;
 import org.apache.activemq.artemis.api.core.client.ActiveMQClient;
 import org.apache.activemq.artemis.api.core.client.ClientSession;
 import org.apache.activemq.artemis.api.core.client.ClientSessionFactory;
 import org.apache.activemq.artemis.api.core.client.FailoverEventListener;
 import org.apache.activemq.artemis.api.core.client.FailoverEventType;
 import org.apache.activemq.artemis.api.core.client.ServerLocator;
+import org.apache.activemq.artemis.core.remoting.impl.netty.NettyConnectorFactory;
+
+import java.util.HashMap;
+import java.util.Map;
 
 public class BrokerDemoApplication {
 
-	// Primary: 172.25.0.3
-	// Backup: 172.25.0.2
-
-	public static final String url = "tcp://localhost:61616?ha=true&retryInterval=1000&retryIntervalMultiplier=1.0&failoverAttempts=10";
-
 	public static void main(String[] args) throws Exception {
-		ServerLocator locator = ActiveMQClient.createServerLocator(url);
 
-		System.out.println("size: " + locator.getTopology().getMembers().size());
+		// Since the ActiveMQ brokers run in their own network you must get the IP addresses of the containers
+		// using `docker network inspect <Network Name>`
+		
+		Map<String, Object> primaryMap = new HashMap<String, Object>();
+		primaryMap.put("host", "192.168.0.2");
+		primaryMap.put("port", "61616");
+		TransportConfiguration primary = new TransportConfiguration(NettyConnectorFactory.class.getName(), primaryMap);
 
-		locator.getTopology().getMembers().forEach(m -> {
-			System.out.println("Primary: " + m.getPrimary().getName());
-			System.out.println("Backup: " + m.getBackup().getName());
-		});
+		HashMap<String, Object> backupMap = new HashMap<String, Object>();
+		backupMap.put("host", "192.168.0.3");
+		backupMap.put("port", "61616");
+		TransportConfiguration backup = new TransportConfiguration(NettyConnectorFactory.class.getName(), backupMap);
 
-		final ClientSessionFactory sessionFactory = locator.createSessionFactory();
+		ServerLocator locator = ActiveMQClient.createServerLocatorWithHA(primary, backup)
+			.setReconnectAttempts(10)
+			.setRetryInterval(1000)
+			.setFailoverAttempts(1);
 
-		sessionFactory.addFailoverListener(new FailoverEventListener() {
+		ClientSessionFactory sessionFactory = locator.createSessionFactory();
+		try {
+			sessionFactory.addFailoverListener(new FailoverEventListener() {
 
-			@Override
-			public void failoverEvent(FailoverEventType eventType) {
-				try {
+				@Override
+				public void failoverEvent(FailoverEventType eventType) {
 					System.out.println("failover event: " + eventType.name());
-					ClientSession newSession = sessionFactory
-						.createSession("artemis", "artemis", true, true, true, true, 10);
-					System.out.println("New session created after failover event");
-					process(newSession);
-				} catch (ActiveMQException e) {
-					System.out.println("failed to recreate session during failover event");
-					e.printStackTrace();
+
+					int maxAttempts = 5;
+					for (int i=0; i<maxAttempts; i++) {
+						try {
+							System.out.println("attempt " + i);
+
+							ClientSession newSession = sessionFactory
+								.createSession("artemis", "artemis", true, true, true, true, 10);
+							System.out.println("new session created after failover event!");
+							process(newSession);
+						} catch (Exception e) {
+							System.out.println("failed to recreate session during failover event");
+							e.printStackTrace();
+						}
+					}
 				}
-			}
-			
-		});
+			});
+	
+			System.out.println("Session created");
+			ClientSession session = sessionFactory
+				.createSession("artemis", "artemis", true, true, true, true, 10);
 
-		System.out.println("Session created");
-		ClientSession session = sessionFactory
-			.createSession("artemis", "artemis", true, true, true, true, 10);
-
-		process(session);
+			process(session);
+		}
+		finally {
+			sessionFactory.close();
+		}
 	}
 
 	public static void process(ClientSession session) throws ActiveMQException {
@@ -61,11 +80,6 @@ public class BrokerDemoApplication {
 			}
 		} catch (Exception e) {
 			System.out.println(e);
-		}
-		finally {
-			if (session != null) {
-				session.close();
-			}
 		}
 	}
 }
